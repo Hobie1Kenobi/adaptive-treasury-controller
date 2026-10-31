@@ -180,7 +180,12 @@ describe("sandbox fixes", () => {
     assert.equal(planned.liveUsd, 10_000_000);
     assert.equal(planned.operatingCapUsd, 15500);
     assert.equal(planned.obligations.find((item) => item.id === "INV-EUR-220")?.action, "convert");
-    assert.match(planned.warning ?? "", /demo cap/);
+    assert.equal(planned.warning, null);
+    assert.match(planned.capNotice ?? "", /operating book of \$15,500\.00/);
+    assert.match(planned.capNotice ?? "", /live wallet of \$10,000,000\.00/);
+    assert.match(planned.capNotice ?? "", /no sandbox withdrawal simulation/);
+    assert.match(planned.capNotice ?? "", /Payouts still execute on the live wallet/);
+    assert.equal(planned.capNotice?.match(/Sandbox demo cap/g), null);
 
     const raw = new MockAirwallexClient({ initial: { USD: 10_000_000, EUR: 10_000_000, GBP: 10_000_000 } });
     const uncapped = new TreasurySession(raw, new DeterministicPlanner(), new IdempotencyKeys(), {
@@ -190,6 +195,7 @@ describe("sandbox fixes", () => {
     const livePlan = await uncapped.plan();
     assert.equal(livePlan.obligations.find((item) => item.id === "INV-EUR-220")?.action, "fund");
     assert.equal(livePlan.usdAvailable, 10_000_000);
+    assert.equal(livePlan.capNotice, null);
   });
 
   it("recovers a replayed transfer from the id in duplicate_request_id", async () => {

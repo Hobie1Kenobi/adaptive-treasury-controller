@@ -66,6 +66,7 @@ async function runAct(title: string, act: () => Promise<DeskView>): Promise<Desk
       `  ${item.id} ${item.action.toUpperCase()}${approval}${flag}  ${item.currency} ${item.amount.toFixed(2)}  ${item.payee}`,
     );
   }
+  if (view.capNotice) console.log(`Note: ${view.capNotice}`);
   if (view.warning) console.log(`Note: ${view.warning}`);
   return view;
 }

@@ -95,6 +95,7 @@ export interface DeskView {
   usdAvailable: number;
   liveUsd: number;
   operatingCapUsd: number | null;
+  capNotice: string | null;
   warning: string | null;
   obligations: Array<
     Obligation & {
@@ -234,9 +235,7 @@ export class TreasurySession {
     this.openOperatingBook(target);
     this.data.openingDeposited = true;
     this.data.act = "funded";
-    this.data.narrative = this.cap
-      ? `Operating book is ${money(cash(this.data.balances, "USD"), "USD")} under the sandbox demo cap. Reserve floor is ${money(POLICY.reserveFloorUsd, "USD")}. Live wallet USD is ${money(cash(this.liveBalances, "USD"), "USD")}.`
-      : `Operating cash is on the blotter. Reserve floor is ${money(POLICY.reserveFloorUsd, "USD")}. Five obligations fall due inside 72 hours.`;
+    this.data.narrative = `Operating cash is on the blotter. Reserve floor is ${money(POLICY.reserveFloorUsd, "USD")}. Five obligations fall due inside 72 hours.`;
     return this.view();
   }
 
@@ -531,6 +530,7 @@ export class TreasurySession {
       usdAvailable: cash(this.data.balances, "USD"),
       liveUsd: cash(this.liveBalances.length > 0 ? this.liveBalances : this.data.balances, "USD"),
       operatingCapUsd: this.cap,
+      capNotice: this.capNotice(),
       warning: this.data.warning,
       obligations: OBLIGATIONS.map((obligation) => {
         const decision = decisionById.get(obligation.id);
@@ -630,10 +630,14 @@ export class TreasurySession {
       return;
     }
     this.book = { usd: round2(Math.min(liveUsd, this.cap)), eur: 0, gbp: 0 };
-    if (liveUsd > this.cap + 1) {
-      this.data.warning = `Sandbox demo cap is on. Decisions use an operating book of ${money(this.cap, "USD")}, not the live wallet of ${money(liveUsd, "USD")}. Airwallex has no wallet-withdrawal simulation; the cap is the stand-in. Payouts still execute on the live wallet.`;
-    }
     this.publishBalances();
+  }
+
+  private capNotice(): string | null {
+    if (this.cap == null) return null;
+    const live = cash(this.liveBalances.length > 0 ? this.liveBalances : this.data.balances, "USD");
+    if (live <= this.cap + 1) return null;
+    return `Decisions use an operating book of ${usdLabel(this.cap)}, not the live wallet of ${usdLabel(live)}. There is no sandbox withdrawal simulation. Payouts still execute on the live wallet.`;
   }
 
   private publishBalances(): void {
@@ -714,6 +718,10 @@ export class TreasurySession {
   private audit(act: string, message: string, detail?: Record<string, unknown>): void {
     this.data.audit.push({ at: new Date().toISOString(), act, message, detail });
   }
+}
+
+function usdLabel(amount: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
 }
 
 function settlementFor(

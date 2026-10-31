@@ -95,7 +95,7 @@ function render(view) {
   document.getElementById("story").innerHTML = `
     <h2>What changed</h2>
     <p class="story">${esc(view.narrative)}</p>
-    ${view.operatingCapUsd ? `<p class="cap">Sandbox demo cap ${money(view.operatingCapUsd, "USD")}. The blotter is the operating book, not the whole wallet. Live USD available is ${money(view.liveUsd, "USD")}. There is no sandbox call that withdraws a rich wallet.</p>` : ""}
+    ${view.capNotice ? `<p class="cap"><strong>Sandbox demo cap</strong>${esc(view.capNotice)}</p>` : ""}
     ${view.warning ? `<p class="error">${esc(view.warning)}</p>` : ""}
     ${state.error ? `<p class="error">${esc(state.error)}</p>` : ""}
     ${email}
