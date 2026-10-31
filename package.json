@@ -1,0 +1,22 @@
+{
+  "name": "adaptive-treasury-controller",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Adaptive Treasury Controller for Agentic Settlement. Airwallex sandbox demo for the Agentic Banking Hackathon (Starter Kit 01).",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "demo": "tsx src/cli.ts demo --approve",
+    "demo:interactive": "tsx src/cli.ts demo",
+    "serve": "tsx src/cli.ts serve",
+    "test": "tsx --test tests/policy.test.ts tests/mock-flow.test.ts tests/http-client.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
