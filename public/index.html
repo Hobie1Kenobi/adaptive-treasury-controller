@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Adaptive Treasury Controller</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <p class="eyebrow">Starter Kit 01 · Treasury and ops · sandbox or mock</p>
+        <h1>Adaptive Treasury Controller</h1>
+        <p class="tagline" id="tagline">Loading the blotter…</p>
+      </div>
+      <div class="badges">
+        <span class="badge" id="mode-badge">Mode</span>
+        <span class="badge quiet" id="planner-badge">Planner</span>
+      </div>
+    </header>
+
+    <section class="balances" id="balances" aria-label="Balances"></section>
+
+    <div class="layout">
+      <aside class="acts" aria-label="Demo acts">
+        <h2>Demo acts</h2>
+        <ol id="act-list"></ol>
+        <button type="button" class="ghost" id="reset">Reset desk</button>
+        <p class="fine">Airwallex moves the money. This desk is not an Airwallex product and there is no partnership. No live funds.</p>
+      </aside>
+
+      <main>
+        <section class="panel" id="story"></section>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Obligations</h2>
+            <p>Five invoices, three currencies, due inside 72 hours.</p>
+          </div>
+          <div id="obligations"></div>
+        </section>
+        <section class="panel" id="approval-panel" hidden></section>
+      </main>
+
+      <aside class="side">
+        <section class="panel" id="policy-panel"></section>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Audit</h2>
+            <p>What the code did, in order.</p>
+          </div>
+          <ol class="audit" id="audit"></ol>
+        </section>
+      </aside>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
