@@ -31,6 +31,7 @@ describe("mock treasury flow", () => {
 
     const funded = await session.setup();
     assert.equal(usd(funded), POLICY.openingUsdTarget);
+    assert.equal(funded.capNotice, null);
     assert.equal(funded.mode, "mock");
     assert.equal(JSON.stringify(funded).includes("DE89370400440532013000"), false);
 
