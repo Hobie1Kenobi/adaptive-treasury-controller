@@ -9,9 +9,11 @@ import {
   buildPlan,
   confidenceFromEmail,
   markAffected,
+  resolveSwiftFee,
   usdCost,
   withinApprovalDrift,
 } from "../src/policy/engine";
+import { round2 } from "../src/money";
 import { parseProposal } from "../src/planner/planner";
 import { CONFLICTING_EMAIL, OBLIGATIONS } from "../src/scenario/seed";
 
@@ -37,7 +39,10 @@ describe("policy engine", () => {
   it("prices the EUR SWIFT payout with the flat fee", () => {
     const eur = OBLIGATIONS.find((item) => item.id === "INV-EUR-220");
     assert.ok(eur);
-    assert.equal(usdCost(eur, MOCK_USD_PER_UNIT), 2011.88);
+    const fee = resolveSwiftFee();
+    assert.equal(usdCost(eur, MOCK_USD_PER_UNIT), round2((eur.amount + fee.total) * MOCK_USD_PER_UNIT.EUR));
+    assert.equal(fee.base, 13.48);
+    assert.ok(fee.total > fee.base);
   });
 
   it("funds the critical invoice, converts the time-sensitive supplier, defers the cheapest, and escalates the floor breach", () => {

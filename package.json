@@ -11,7 +11,7 @@
     "demo": "tsx src/cli.ts demo --approve",
     "demo:interactive": "tsx src/cli.ts demo",
     "serve": "tsx src/cli.ts serve",
-    "test": "tsx --test tests/policy.test.ts tests/mock-flow.test.ts tests/http-client.test.ts",
+    "test": "tsx --test tests/policy.test.ts tests/mock-flow.test.ts tests/http-client.test.ts tests/live-fixes.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

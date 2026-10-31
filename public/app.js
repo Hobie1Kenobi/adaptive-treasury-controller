@@ -89,12 +89,13 @@ function render(view) {
         <div>USD left <b>${view.execution.reserveUsd == null ? "—" : money(view.execution.reserveUsd, "USD")}</b></div>
         <div>Reserve <b>${view.execution.reserveIntact ? "above floor" : "check failed"}</b></div>
       </div>
-      <p class="muted">This beat books one FX conversion and one supplier transfer. The USD freight decision stays queued.</p>`
+      <p class="muted">This beat books one FX conversion and one supplier transfer. The quote is submitted once even when Airwallex marks it MULTI_USE. The USD freight decision stays queued.</p>`
     : "";
 
   document.getElementById("story").innerHTML = `
     <h2>What changed</h2>
     <p class="story">${esc(view.narrative)}</p>
+    ${view.operatingCapUsd ? `<p class="cap">Sandbox demo cap ${money(view.operatingCapUsd, "USD")}. The blotter is the operating book, not the whole wallet. Live USD available is ${money(view.liveUsd, "USD")}. There is no sandbox call that withdraws a rich wallet.</p>` : ""}
     ${view.warning ? `<p class="error">${esc(view.warning)}</p>` : ""}
     ${state.error ? `<p class="error">${esc(state.error)}</p>` : ""}
     ${email}
@@ -151,7 +152,7 @@ function render(view) {
       <li>Reserve floor <b>${money(view.policy.reserveFloorUsd, "USD")}</b> available.</li>
       <li>Headroom now <b>${snap ? money(snap.headroomUsd, "USD") : "—"}</b>. Book total <b>${snap ? money(snap.totalUsdCost, "USD") : "—"}</b>.</li>
       <li>Confidence gate <b>${view.policy.confidenceThreshold.toFixed(2)}</b>. Cap <b>${money(view.policy.autonomousConversionUsd.high, "USD")}</b> above it, <b>${money(view.policy.autonomousConversionUsd.low, "USD")}</b> below.</li>
-      <li>EUR SWIFT fee <b>${money(view.policy.swiftFeeEur, "EUR")}</b> added to the conversion. Local payouts are free.</li>
+      <li>EUR SWIFT provision <b>${money(view.policy.swiftFeeEur, "EUR")}</b> (estimate ${money(view.policy.swiftFeeBaseEur, "EUR")} plus pad ${money(view.policy.swiftFeePadEur, "EUR")}). Local payouts are free.</li>
       <li>${esc(view.policy.cheapestRule)}</li>
       <li>Indicative EUR ${snap ? snap.usdPerUnit.EUR : "—"}, GBP ${snap ? snap.usdPerUnit.GBP : "—"}. The booked quote uses client_rate.</li>
     </ul>`;

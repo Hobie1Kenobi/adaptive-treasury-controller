@@ -9,8 +9,32 @@ export const POLICY = {
   lowConfidence: 0.42,
   confidenceThreshold: 0.75,
   autonomousConversionUsd: { high: 4000, low: 1000 },
-  swiftFeeEur: 12.85,
 } as const;
+
+/** Live sandbox observation (Oct 2026): EUR SWIFT fee_amount was 13.48, not the kit's 12.85. */
+export const OBSERVED_SWIFT_FEE_EUR = 13.48;
+export const DEFAULT_SWIFT_FEE_PAD_EUR = 1;
+
+export interface SwiftFee {
+  base: number;
+  pad: number;
+  total: number;
+}
+
+function readAmount(raw: string | undefined, fallback: number): number {
+  if (raw == null || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Expected a non-negative amount, received "${raw}".`);
+  }
+  return value;
+}
+
+export function resolveSwiftFee(env: NodeJS.ProcessEnv = process.env): SwiftFee {
+  const base = readAmount(env.SWIFT_FEE_EUR, OBSERVED_SWIFT_FEE_EUR);
+  const pad = readAmount(env.SWIFT_FEE_PAD_EUR, DEFAULT_SWIFT_FEE_PAD_EUR);
+  return { base: round2(base), pad: round2(pad), total: round2(base + pad) };
+}
 
 export const MOCK_USD_PER_UNIT: Record<string, number> = {
   USD: 1,
@@ -45,6 +69,8 @@ export interface PolicySnapshot {
   autonomousCapUsd: number;
   highCapUsd: number;
   swiftFeeEur: number;
+  swiftFeeBaseEur: number;
+  swiftFeePadEur: number;
   usdPerUnit: Record<string, number>;
   canSettleAll: boolean;
   totalUsdCost: number;
@@ -72,10 +98,18 @@ export function autonomousCapUsd(confidence: number): number {
     : POLICY.autonomousConversionUsd.low;
 }
 
-export function payoutFunding(obligation: Obligation): { fee: number; buyAmount: number } {
-  const fee =
-    obligation.transferMethod === "SWIFT" && obligation.currency === "EUR" ? POLICY.swiftFeeEur : 0;
-  return { fee, buyAmount: round2(obligation.amount + fee) };
+export function payoutFunding(
+  obligation: Obligation,
+  fee: SwiftFee = resolveSwiftFee(),
+): { fee: number; buyAmount: number; feeBase: number; feePad: number } {
+  const swift = obligation.transferMethod === "SWIFT" && obligation.currency === "EUR";
+  const provision = swift ? fee.total : 0;
+  return {
+    fee: provision,
+    feeBase: swift ? fee.base : 0,
+    feePad: swift ? fee.pad : 0,
+    buyAmount: round2(obligation.amount + provision),
+  };
 }
 
 export function usdCost(obligation: Obligation, usdPerUnit: Record<string, number>): number {
@@ -99,6 +133,7 @@ export function buildPlan(input: {
   usdPerUnit: Record<string, number>;
   confidence: number;
 }): { decisions: PolicyDecision[]; snapshot: PolicySnapshot } {
+  const feeQuote = resolveSwiftFee();
   const costs = new Map(input.obligations.map((item) => [item.id, usdCost(item, input.usdPerUnit)]));
   const totalUsdCost = round2([...costs.values()].reduce((sum, cost) => sum + cost, 0));
   const headroomUsd = round2(input.usdAvailable - POLICY.reserveFloorUsd);
@@ -180,7 +215,7 @@ export function buildPlan(input: {
         : ` Forecast confidence is ${input.confidence.toFixed(2)}, so the agent may convert up to ${money(cap, "USD")} without a person.`;
       const feeSentence =
         funding.fee > 0
-          ? ` Buy ${money(funding.buyAmount, obligation.currency)} so the ${money(obligation.amount, obligation.currency)} invoice plus the flat ${money(funding.fee, obligation.currency)} SWIFT fee are both covered.`
+          ? ` Buy ${money(funding.buyAmount, obligation.currency)} so the ${money(obligation.amount, obligation.currency)} invoice plus a SWIFT provision of ${money(funding.fee, obligation.currency)} (fee estimate ${money(funding.feeBase, obligation.currency)} plus pad ${money(funding.feePad, obligation.currency)}) are covered.`
           : ` Buy ${money(funding.buyAmount, obligation.currency)}. Local payouts have no fee.`;
       decisions.push({
         ...base,
@@ -222,7 +257,9 @@ export function buildPlan(input: {
       confidence: input.confidence,
       autonomousCapUsd: cap,
       highCapUsd: POLICY.autonomousConversionUsd.high,
-      swiftFeeEur: POLICY.swiftFeeEur,
+      swiftFeeEur: feeQuote.total,
+      swiftFeeBaseEur: feeQuote.base,
+      swiftFeePadEur: feeQuote.pad,
       usdPerUnit: { ...input.usdPerUnit },
       canSettleAll,
       totalUsdCost,

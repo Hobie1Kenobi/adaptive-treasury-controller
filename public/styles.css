@@ -232,6 +232,14 @@ button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .row-actions button { text-align: center; }
 .row-actions .primary { background: var(--teal); color: white; border-color: var(--teal-ink); }
 
+.cap {
+  margin-top: 0.7rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--gold);
+  background: #fff6e4;
+  border-radius: 8px;
+}
+
 .error {
   background: #f6dfdc;
   color: var(--wax);

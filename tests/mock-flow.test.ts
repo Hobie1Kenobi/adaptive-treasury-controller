@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { missingRequiredFields } from "../src/airwallex/http-client";
 import { MockAirwallexClient } from "../src/airwallex/mock-client";
+import { createConversionRecovering } from "../src/airwallex/recover";
 import { AirwallexError } from "../src/airwallex/errors";
-import { POLICY } from "../src/policy/engine";
+import { round2 } from "../src/money";
+import { POLICY, resolveSwiftFee } from "../src/policy/engine";
 import { DeterministicPlanner, type Planner } from "../src/planner/planner";
 import { OBLIGATIONS } from "../src/scenario/seed";
 import { TreasurySession } from "../src/treasury/session";
@@ -58,11 +60,13 @@ describe("mock treasury flow", () => {
     const executed = await session.execute();
     assert.equal(executed.execution?.conversionStatus, "SETTLED");
     assert.equal(executed.execution?.transferStatus, "PAID");
-    assert.equal(executed.execution?.quoteUsage, "SINGLE_USE");
-    assert.equal(executed.execution?.feeAmount, POLICY.swiftFeeEur);
+    const fee = resolveSwiftFee();
+    const sell = round2(round2(1850 + fee.total) * 1.08);
+    assert.equal(executed.execution?.quoteUsage, "MULTI_USE");
+    assert.equal(executed.execution?.feeAmount, fee.base);
     assert.equal(executed.execution?.reserveIntact, true);
-    assert.equal(usd(executed), 15988.12);
-    assert.equal(eur(executed), 0);
+    assert.equal(usd(executed), round2(POLICY.openingUsdTarget + POLICY.recalcDepositUsd - sell));
+    assert.equal(eur(executed), fee.pad);
     assert.ok((executed.execution?.reserveUsd ?? 0) >= POLICY.reserveFloorUsd);
     assert.equal(executed.obligations.find((item) => item.id === "INV-EUR-220")?.settlement, "sent");
     assert.equal(executed.obligations.find((item) => item.id === "INV-SHIP-1042")?.settlement, "queued");
@@ -70,7 +74,7 @@ describe("mock treasury flow", () => {
     const again = await session.execute();
     assert.match(again.audit[0]?.message ?? "", /already reached PAID/);
     assert.equal(conversions, 1);
-    assert.equal(usd(again), 15988.12);
+    assert.equal(usd(again), round2(POLICY.openingUsdTarget + POLICY.recalcDepositUsd - sell));
   });
 
   it("treats quotes as single-use and request ids as idempotent", async () => {
@@ -87,7 +91,7 @@ describe("mock treasury flow", () => {
       buy_amount: 100,
       validity: "MIN_30",
     });
-    assert.equal(quote.usage, "SINGLE_USE");
+    assert.equal(quote.usage, "MULTI_USE");
     const request = {
       request_id: "22222222-2222-4222-8222-222222222222",
       buy_currency: "EUR",
@@ -96,7 +100,11 @@ describe("mock treasury flow", () => {
       quote_id: quote.quote_id,
     };
     const first = await client.createConversion(request);
-    const second = await client.createConversion(request);
+    await assert.rejects(
+      () => client.createConversion(request),
+      (error: unknown) => error instanceof AirwallexError && error.code === "invalid_argument",
+    );
+    const second = await createConversionRecovering(client, request);
     assert.equal(first.conversion_id, second.conversion_id);
     assert.equal(first.status, "SETTLED");
     const balances = await client.getBalances();
@@ -111,7 +119,7 @@ describe("mock treasury flow", () => {
     );
     await assert.rejects(
       () => client.createConversion({ ...request, buy_amount: "101.00" }),
-      (error: unknown) => error instanceof AirwallexError && error.code === "duplicate_request_id",
+      (error: unknown) => error instanceof AirwallexError && error.code === "invalid_argument",
     );
 
     const transferRequest = {
@@ -129,22 +137,23 @@ describe("mock treasury flow", () => {
       () => client.createTransfer(transferRequest),
       (error: unknown) => error instanceof AirwallexError && error.code === "balance_insufficient",
     );
+    const fee = resolveSwiftFee();
     const funded = await client.createQuote({
       buy_currency: "EUR",
       sell_currency: "USD",
-      buy_amount: 12.85,
+      buy_amount: fee.base,
       validity: "MIN_30",
     });
     await client.createConversion({
       request_id: "55555555-5555-4555-8555-555555555555",
       buy_currency: "EUR",
       sell_currency: "USD",
-      buy_amount: "12.85",
+      buy_amount: fee.base.toFixed(2),
       quote_id: funded.quote_id,
     });
     const transfer = await client.createTransfer(transferRequest);
-    assert.equal(transfer.fee_amount, 12.85);
-    assert.equal(transfer.amount_payer_pays, 112.85);
+    assert.equal(transfer.fee_amount, fee.base);
+    assert.equal(transfer.amount_payer_pays, round2(100 + fee.base));
     await assert.rejects(
       () => client.transitionTransfer(transfer.id, { next_status: "PAID" }),
       /SENT/,

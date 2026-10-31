@@ -106,6 +106,7 @@ export interface BeneficiaryBankDetails {
 
 export interface BeneficiaryPayload {
   beneficiary: {
+    type?: string;
     entity_type?: "COMPANY" | "PERSONAL" | string;
     company_name?: string;
     first_name?: string;
@@ -202,4 +203,7 @@ export interface AirwallexClient {
     id: string,
     input: { next_status: string; failure_type?: string },
   ): Promise<Transfer>;
+  getTransfer(id: string): Promise<Transfer>;
+  findTransferByRequestId(requestId: string): Promise<Transfer | null>;
+  findConversionByRequestId(requestId: string): Promise<Conversion | null>;
 }

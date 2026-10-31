@@ -40,6 +40,7 @@ const rheinwerkBeneficiary: BeneficiaryPayload = {
   nickname: "Rheinwerk Components GmbH",
   transfer_methods: ["SWIFT"],
   beneficiary: {
+    type: "BANK_ACCOUNT",
     entity_type: "COMPANY",
     company_name: "Rheinwerk Components GmbH",
     address: {

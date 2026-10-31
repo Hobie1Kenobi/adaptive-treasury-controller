@@ -14,7 +14,7 @@ import type {
   SchemaField,
   Transfer,
 } from "./types";
-import { MOCK_USD_PER_UNIT, POLICY } from "../policy/engine";
+import { MOCK_USD_PER_UNIT, resolveSwiftFee } from "../policy/engine";
 import { amountString, round2 } from "../money";
 
 interface StoredQuote extends FxQuote {
@@ -37,6 +37,7 @@ function schemaFields(input: {
     "beneficiary.address.country_code",
   ].map((path) => ({ path, required: true }));
   const common = [
+    { path: "beneficiary.type", required: true },
     { path: "beneficiary.entity_type", required: true },
     { path: "beneficiary.company_name", required: true },
     { path: "beneficiary.bank_details.account_currency", required: true },
@@ -81,6 +82,14 @@ export class MockAirwallexClient implements AirwallexClient {
   private loginCalls = 0;
   private accounts: GlobalAccount[] = [];
   private readonly available = new Map<string, number>();
+  private readonly rates: Record<string, number>;
+
+  constructor(options: { rates?: Record<string, number>; initial?: Record<string, number> } = {}) {
+    this.rates = { ...MOCK_USD_PER_UNIT, ...options.rates };
+    for (const [currency, amount] of Object.entries(options.initial ?? {})) {
+      this.available.set(currency, amount);
+    }
+  }
   private readonly quotes = new Map<string, StoredQuote>();
   private readonly conversions = new Map<string, { payload: unknown; conversion: Conversion }>();
   private readonly transfers = new Map<string, { payload: unknown; transfer: Transfer }>();
@@ -234,7 +243,7 @@ export class MockAirwallexClient implements AirwallexClient {
       sell_amount: round2(input.buy_amount * rate),
       client_rate: rate,
       validity: input.validity,
-      usage: "SINGLE_USE",
+      usage: "MULTI_USE",
       currency_pair: `${input.buy_currency}${input.sell_currency}`,
       used: false,
     };
@@ -253,13 +262,11 @@ export class MockAirwallexClient implements AirwallexClient {
     await this.login();
     const existing = this.conversions.get(input.request_id);
     if (existing) {
-      if (!samePayload(existing.payload, input)) {
-        throw new AirwallexError("request_id was already used for a different conversion", {
-          status: 400,
-          code: "duplicate_request_id",
-        });
-      }
-      return { ...existing.conversion };
+      throw new AirwallexError(`request_id ${input.request_id} has been used`, {
+        status: 400,
+        code: "invalid_argument",
+        details: { request_id: input.request_id, conversion_id: existing.conversion.conversion_id },
+      });
     }
     const quote = this.quotes.get(input.quote_id);
     if (!quote) {
@@ -341,17 +348,18 @@ export class MockAirwallexClient implements AirwallexClient {
     }
     const existing = this.transfers.get(input.request_id);
     if (existing) {
-      if (!samePayload(existing.payload, input)) {
-        throw new AirwallexError("request_id was already used for a different transfer", {
+      throw new AirwallexError(
+        `The request ID ${input.request_id} has been used for a transfer with the transfer ID ${existing.transfer.id} before.`,
+        {
           status: 400,
           code: "duplicate_request_id",
-        });
-      }
-      return { ...existing.transfer };
+          details: { id: existing.transfer.id, request_id: input.request_id },
+        },
+      );
     }
     const transferAmount = round2(Number(input.transfer_amount));
     const fee =
-      input.transfer_method === "SWIFT" && input.transfer_currency === "EUR" ? POLICY.swiftFeeEur : 0;
+      input.transfer_method === "SWIFT" && input.transfer_currency === "EUR" ? resolveSwiftFee().base : 0;
     const feePaidBy = input.fee_paid_by ?? "PAYER";
     const payerPays = feePaidBy === "PAYER" ? round2(transferAmount + fee) : transferAmount;
     const beneficiaryReceives = feePaidBy === "PAYER" ? transferAmount : round2(transferAmount - fee);
@@ -366,7 +374,7 @@ export class MockAirwallexClient implements AirwallexClient {
     const transfer: Transfer = {
       id: randomUUID(),
       request_id: input.request_id,
-      status: "PROCESSING",
+      status: "SCHEDULED",
       transfer_amount: amountString(transferAmount),
       transfer_currency: input.transfer_currency,
       source_amount: amountString(payerPays),
@@ -390,7 +398,11 @@ export class MockAirwallexClient implements AirwallexClient {
     const stored = [...this.transfers.values()].find((item) => item.transfer.id === id);
     if (!stored) throw new AirwallexError("Transfer not found", { status: 404, code: "not_found" });
     const current = stored.transfer.status ?? "PROCESSING";
+    if (input.next_status === "PROCESSING") {
+      throw new AirwallexError("operation_failed", { status: 500, code: "operation_failed" });
+    }
     const allowed: Record<string, string[]> = {
+      SCHEDULED: ["SENT", "FAILED", "CANCELLED"],
       PROCESSING: ["SENT", "FAILED", "CANCELLED", "OVERDUE"],
       SENT: ["PAID", "FAILED", "CANCELLED"],
     };
@@ -417,9 +429,29 @@ export class MockAirwallexClient implements AirwallexClient {
     return { ...stored.transfer };
   }
 
+  async getTransfer(id: string): Promise<Transfer> {
+    await this.login();
+    const stored = [...this.transfers.values()].find((item) => item.transfer.id === id);
+    if (!stored) throw new AirwallexError("Transfer not found", { status: 404, code: "not_found" });
+    if (stored.transfer.status === "SCHEDULED") stored.transfer.status = "PROCESSING";
+    return { ...stored.transfer };
+  }
+
+  async findTransferByRequestId(requestId: string): Promise<Transfer | null> {
+    await this.login();
+    const stored = this.transfers.get(requestId);
+    return stored ? { ...stored.transfer } : null;
+  }
+
+  async findConversionByRequestId(requestId: string): Promise<Conversion | null> {
+    await this.login();
+    const stored = this.conversions.get(requestId);
+    return stored ? { ...stored.conversion } : null;
+  }
+
   private pairRate(buy: string, sell: string): number {
-    const buyUsd = MOCK_USD_PER_UNIT[buy];
-    const sellUsd = MOCK_USD_PER_UNIT[sell];
+    const buyUsd = this.rates[buy];
+    const sellUsd = this.rates[sell];
     if (!buyUsd || !sellUsd) {
       throw new AirwallexError(`Unsupported mock pair ${buy}/${sell}`, {
         status: 400,

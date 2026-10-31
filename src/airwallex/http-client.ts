@@ -139,15 +139,23 @@ export class HttpAirwallexClient implements AirwallexClient {
     transfer_method: "LOCAL" | "SWIFT";
     local_clearing_system?: string;
   }): Promise<BeneficiarySchema> {
-    // The hackathon guide names POST /beneficiaries/schema. The API reference
-    // names POST /beneficiary_api_schemas/generate. Try the guide path, then
-    // the documented path, and record which one answered.
-    const paths = ["/beneficiaries/schema", "/beneficiary_api_schemas/generate"];
+    // Prefer the reference path. A live POST /beneficiaries/schema can return
+    // 200 with {errors, schema} and no fields array, which is not usable.
+    const paths = ["/beneficiary_api_schemas/generate", "/beneficiaries/schema"];
     let lastError: unknown;
     for (const path of paths) {
       try {
         const raw = await this.request<unknown>("POST", path, { body: input });
-        return { pathUsed: path, fields: extractSchemaFields(raw), raw };
+        const fields = extractSchemaFields(raw);
+        if (fields.length === 0) {
+          lastError = new AirwallexError(`Schema response from ${path} did not include fields`, {
+            status: 200,
+            code: "schema_without_fields",
+            details: raw,
+          });
+          continue;
+        }
+        return { pathUsed: path, fields, raw };
       } catch (error) {
         lastError = error;
         if (!isRouteMissing(error)) throw error;
@@ -176,6 +184,26 @@ export class HttpAirwallexClient implements AirwallexClient {
 
   async transitionTransfer(id: string, input: { next_status: string; failure_type?: string }): Promise<Transfer> {
     return this.request("POST", `/simulation/transfers/${encodeURIComponent(id)}/transition`, { body: input });
+  }
+
+  async getTransfer(id: string): Promise<Transfer> {
+    return this.request("GET", `/transfers/${encodeURIComponent(id)}`);
+  }
+
+  async findTransferByRequestId(requestId: string): Promise<Transfer | null> {
+    const body = await this.request<Transfer[] | { items?: Transfer[] }>(
+      "GET",
+      `/transfers?request_id=${encodeURIComponent(requestId)}`,
+    );
+    return firstOf(body);
+  }
+
+  async findConversionByRequestId(requestId: string): Promise<Conversion | null> {
+    const body = await this.request<Conversion[] | { items?: Conversion[] }>(
+      "GET",
+      `/fx/conversions?request_id=${encodeURIComponent(requestId)}`,
+    );
+    return firstOf(body);
   }
 
   private async request<T>(
@@ -220,6 +248,12 @@ function safeJson(text: string): unknown {
   }
 }
 
+function firstOf<T>(body: T[] | { items?: T[] } | null | undefined): T | null {
+  if (Array.isArray(body)) return body[0] ?? null;
+  if (body && Array.isArray(body.items)) return body.items[0] ?? null;
+  return null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value != null && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
@@ -231,10 +265,22 @@ export function extractSchemaFields(raw: unknown): SchemaField[] {
   return fields.filter((field) => field && typeof field === "object") as SchemaField[];
 }
 
+const SCHEMA_PATHS_NOT_ON_CREATE = new Set(["transfer_method"]);
+
+export function prepareBeneficiary<T extends BeneficiaryPayload>(payload: T): T {
+  const type = payload.beneficiary.type;
+  const safeType = !type || type === "COMPANY" || type === "PERSONAL" ? "BANK_ACCOUNT" : type;
+  return {
+    ...payload,
+    beneficiary: { ...payload.beneficiary, type: safeType },
+  };
+}
+
 export function missingRequiredFields(fields: SchemaField[], payload: unknown): string[] {
   const missing: string[] = [];
   for (const field of fields) {
     if (!field.required || !field.path) continue;
+    if (SCHEMA_PATHS_NOT_ON_CREATE.has(field.path)) continue;
     const value = readDotPath(payload, field.path);
     if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) {
       missing.push(field.path);

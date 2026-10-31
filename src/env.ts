@@ -41,6 +41,17 @@ export function resolveMode(env: NodeJS.ProcessEnv = process.env): TreasuryMode 
   return "mock";
 }
 
+/** USD opening balance the policy treats as the operating book. `off` uses the live wallet. */
+export function resolveOperatingCap(env: NodeJS.ProcessEnv = process.env): number | null {
+  const raw = (env.TREASURY_OPERATING_CAP ?? "15500").trim().toLowerCase();
+  if (raw === "off" || raw === "live" || raw === "none") return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`TREASURY_OPERATING_CAP must be a positive amount or "off". Received "${raw}".`);
+  }
+  return value;
+}
+
 export function apiRoot(env: NodeJS.ProcessEnv = process.env): string {
   const raw = (env.AIRWALLEX_BASE_URL ?? "https://api.sandbox.airwallex.com").replace(/\/$/, "");
   return raw.endsWith("/api/v1") ? raw : `${raw}/api/v1`;
